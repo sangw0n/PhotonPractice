@@ -1,8 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
-using UnityEngine;
+using Photon.Pun;
+using Photon.Realtime;
+using Player = Photon.Realtime.Player;
 
-public class Damage : MonoBehaviour
+using UnityEngine;
+using ExitGames.Client.Photon.StructWrapping;
+
+public class Damage : MonoBehaviourPunCallbacks
 {
     // 사망 후 투명 처리를 위한 MeshRenderer 컴포넌트 배열
     private Renderer[] renderers;
@@ -18,6 +23,9 @@ public class Damage : MonoBehaviour
     // 애니메이터 뷰에 생성한 파라미터의 해시값 추출
     private readonly int hashDie = Animator.StringToHash("Die");
     private readonly int hashRespawn = Animator.StringToHash("Respawn");
+    
+    // GameManager 접근을 위한 변수
+    private GameManager gameManager;
 
     private void Awake() {
         // 캐릭터 모델의 모든 Renderer 컴포넌트를 추출한 후 배열에 할당
@@ -27,6 +35,8 @@ public class Damage : MonoBehaviour
 
         // 현재 생명치를 초기 생명치로 초깃값 설정
         curHp = initHp;
+
+        gameManager = GameObject.Find("GameManager").GetComponent<GameManager>();
     }
 
     private void OnCollisionEnter(Collision coll) {
@@ -36,9 +46,28 @@ public class Damage : MonoBehaviour
             curHp -= 20;
             if(curHp <= 0)
             {
+                // 자신의 PhotonView일 때만 메세지를 출력 
+                if(photonView.IsMine)
+                {
+                    // 총알의 ActorNumber를 추출
+                    var actorNo = coll.collider.GetComponent<Bullet>().actorNumber;
+                    // ActorNumber로 현재 룸에 입장한 플레이어를 추출
+                    Player lastShootPlayer = PhotonNetwork.CurrentRoom.GetPlayer(actorNo);
+
+                    // 메세지 출력을 위한 문자열 포맷
+                    string msg = string.Format("\n<color=#00ff00>{0}</color> is killed by <color=#ff0000>{1}</color>", photonView.Owner.NickName, lastShootPlayer.NickName);
+                    photonView.RPC("KillMessage", RpcTarget.AllBufferedViaServer, msg);
+                }
                 StartCoroutine(PlayerDie());
             }
         }
+    }
+
+    [PunRPC]
+    private void KillMessage(string msg)
+    {
+        // 메세지 출력
+        gameManager.msgList.text += msg;
     }
 
     private IEnumerator PlayerDie()
